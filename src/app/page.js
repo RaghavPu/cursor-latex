@@ -180,7 +180,7 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
       <div className="flex h-[calc(100vh-73px)]">
         {/* Left Side - Editor */}
         <div className="w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-          <div className="p-6 border-b border-gray-100 dark:border-gray-800">
+          <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
             <input
               ref={titleRef}
               type="text"
@@ -191,7 +191,7 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
             />
           </div>
           
-          <div className="flex-1 p-6">
+          <div className="flex-1 p-6 overflow-auto">
             <LatexEditor
               value={content}
               onChange={handleContentChange}
@@ -205,14 +205,14 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
 
         {/* Right Side - PDF Preview / Errors */}
         <div className="w-1/2 flex flex-col">
-          <div className="p-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between">
+          <div className="p-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between flex-shrink-0">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
               {!hasCompiled ? 'Preview' : (compileLog ? 'Errors' : 'PDF Preview')}
             </h3>
             <span className="text-xs text-gray-500 dark:text-gray-400">Press ⌘S / Ctrl+S to compile</span>
           </div>
           
-          <div className="flex-1 bg-white dark:bg-[#1a1a1a]">
+          <div className="flex-1 bg-white dark:bg-[#1a1a1a] overflow-auto">
             {!hasCompiled ? (
               <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
                 <div className="text-center">
@@ -228,7 +228,7 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
                 <div className="animate-spin h-8 w-8 rounded-full border-2 border-gray-300 border-t-transparent"></div>
               </div>
             ) : compileLog ? (
-              <div className="p-6 overflow-auto h-full">
+              <div className="p-6 h-full">
                 <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
                   <h4 className="font-semibold text-red-800 dark:text-red-200 mb-2">Compilation Errors:</h4>
                 </div>
