@@ -2,6 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import LatexEditor from '../components/LatexEditor';
+import AIChat from '../components/AIChat';
+import AIConfig from '../components/AIConfig';
+import ResizableDivider from '../components/ResizableDivider';
 
 export default function Home() {
   const [title, setTitle] = useState('My LaTeX Document');
@@ -46,6 +49,8 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
   const [isCompiling, setIsCompiling] = useState(false);
   const [compiledPdfUrl, setCompiledPdfUrl] = useState('');
   const [compileLog, setCompileLog] = useState('');
+  const [showAIConfig, setShowAIConfig] = useState(false);
+  const [aiChatWidth, setAiChatWidth] = useState(320); // Default width for AI chat pane
   const titleRef = useRef(null);
 
   // Detect dark mode
@@ -176,10 +181,24 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
         </div>
       </div>
 
-      {/* Split Editor Layout */}
+      {/* Three-Pane Layout: AI Chat | Editor | PDF Preview */}
       <div className="flex h-[calc(100vh-73px)]">
-        {/* Left Side - Editor */}
-        <div className="w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+        {/* Left Side - AI Chat with Resizable Divider */}
+        <ResizableDivider
+          onResize={setAiChatWidth}
+          minWidth={280}
+          maxWidth={600}
+          defaultWidth={aiChatWidth}
+          className="flex-shrink-0"
+        >
+          <AIChat 
+            isDark={isDark} 
+            onShowConfig={() => setShowAIConfig(true)}
+          />
+        </ResizableDivider>
+
+        {/* Center - Editor */}
+        <div className="flex-1 border-r border-gray-200 dark:border-gray-700 flex flex-col min-w-0">
           <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
             <input
               ref={titleRef}
@@ -204,7 +223,7 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
         </div>
 
         {/* Right Side - PDF Preview / Errors */}
-        <div className="w-1/2 flex flex-col">
+        <div className="flex-1 flex flex-col min-w-0">
           <div className="p-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between flex-shrink-0">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
               {!hasCompiled ? 'Preview' : (compileLog ? 'Errors' : 'PDF Preview')}
@@ -249,6 +268,13 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
           </div>
         </div>
       </div>
+
+      {/* AI Configuration Modal */}
+      <AIConfig 
+        isOpen={showAIConfig}
+        onClose={() => setShowAIConfig(false)}
+        onSave={() => setShowAIConfig(false)}
+      />
     </div>
   );
 }
