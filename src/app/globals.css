@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 :root {
@@ -19,8 +20,334 @@
   }
 }
 
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+}
+
+/* Selection styles */
+::selection {
+  background: rgba(59, 130, 246, 0.2);
+  color: inherit;
+}
+
+::-moz-selection {
+  background: rgba(59, 130, 246, 0.2);
+  color: inherit;
+}
+
+/* Focus styles */
+input:focus,
+textarea:focus {
+  outline: none;
+}
+
+/* Smooth transitions for theme changes */
+* {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* LaTeX Editor Enhancements */
+.latex-editor {
+  font-feature-settings: "liga" 0;
+  tab-size: 2;
+}
+
+/* Syntax Highlighter Improvements */
+.token.comment {
+  color: #6a737d !important;
+  font-style: italic;
+}
+
+.token.command {
+  color: #d73a49 !important;
+  font-weight: 600;
+}
+
+.token.environment {
+  color: #6f42c1 !important;
+}
+
+.token.environment .keyword {
+  color: #d73a49 !important;
+  font-weight: 600;
+}
+
+.token.environment-name {
+  color: #032f62 !important;
+}
+
+.token.math-delimiter {
+  color: #e36209 !important;
+  font-weight: bold;
+}
+
+.token.brace,
+.token.bracket {
+  color: #24292e !important;
+}
+
+.token.parameter {
+  color: #032f62 !important;
+}
+
+/* Dark mode syntax highlighting */
+@media (prefers-color-scheme: dark) {
+  .token.comment {
+    color: #8b949e !important;
+  }
+
+  .token.command {
+    color: #ff7b72 !important;
+  }
+
+  .token.environment {
+    color: #d2a8ff !important;
+  }
+
+  .token.environment .keyword {
+    color: #ff7b72 !important;
+  }
+
+  .token.environment-name {
+    color: #a5d6ff !important;
+  }
+
+  .token.math-delimiter {
+    color: #ffa657 !important;
+  }
+
+  .token.brace,
+  .token.bracket {
+    color: #e6edf3 !important;
+  }
+
+  .token.parameter {
+    color: #a5d6ff !important;
+  }
+}
+
+/* KaTeX styling improvements */
+.katex-display {
+  margin: 1.5em 0;
+  text-align: center;
+}
+
+.katex-display > .katex {
+  text-align: center;
+}
+
+/* Prose styling for LaTeX preview */
+.prose {
+  max-width: none;
+}
+
+.prose h1 {
+  @apply text-3xl font-bold mb-6 mt-8;
+}
+
+.prose h2 {
+  @apply text-2xl font-bold mb-4 mt-8 text-gray-800;
+}
+
+.prose h3 {
+  @apply text-xl font-semibold mb-3 mt-6 text-gray-700;
+}
+
+.prose p {
+  @apply mb-4 leading-relaxed;
+}
+
+.prose ul {
+  @apply mb-4 space-y-1;
+}
+
+.prose ol {
+  @apply mb-4 space-y-1;
+}
+
+.prose li {
+  @apply mb-2;
+}
+
+/* Dark mode prose adjustments */
+@media (prefers-color-scheme: dark) {
+  .prose h2 {
+    @apply text-gray-200;
+  }
+  
+  .prose h3 {
+    @apply text-gray-300;
+  }
+}
+
+/* LaTeX document styling with MathJax support */
+.latex-document {
+  font-family: 'Computer Modern', 'Latin Modern', 'Times New Roman', serif;
+  line-height: 1.6;
+  max-width: none;
+  padding: 2rem;
+}
+
+.latex-document .title-block {
+  text-align: center;
+  margin: 2rem 0 3rem 0;
+  border-bottom: 1px solid #e5e5e5;
+  padding-bottom: 2rem;
+}
+
+.latex-document .document-title {
+  font-size: 2rem;
+  font-weight: bold;
+  margin: 0 0 1rem 0;
+  color: #1a1a1a;
+}
+
+.latex-document .document-author {
+  font-size: 1.2rem;
+  margin: 0.5rem 0;
+  color: #666;
+}
+
+.latex-document .document-date {
+  font-size: 1rem;
+  margin: 0.5rem 0;
+  color: #888;
+}
+
+.latex-document .section {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin: 2rem 0 1rem 0;
+  color: #2d3748;
+}
+
+.latex-document .subsection {
+  font-size: 1.3rem;
+  font-weight: bold;
+  margin: 1.5rem 0 0.8rem 0;
+  color: #2d3748;
+}
+
+.latex-document .subsubsection {
+  font-size: 1.1rem;
+  font-weight: bold;
+  margin: 1.2rem 0 0.6rem 0;
+  color: #2d3748;
+}
+
+.latex-document p {
+  margin: 1rem 0;
+  text-align: justify;
+  line-height: 1.7;
+}
+
+.latex-document .itemize,
+.latex-document .enumerate {
+  margin: 1rem 0;
+  padding-left: 2rem;
+}
+
+.latex-document .itemize li,
+.latex-document .enumerate li {
+  margin: 0.5rem 0;
+  line-height: 1.6;
+}
+
+/* MathJax styling */
+.latex-document .MathJax {
+  outline: 0;
+}
+
+.latex-document .align-environment {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.latex-document .align-environment .MathJax {
+  margin: 0.5rem 0;
+}
+
+.math-error {
+  color: #dc2626;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .latex-document {
+    color: #e5e5e5;
+  }
+  
+  .latex-document .title-block {
+    border-bottom-color: #374151;
+  }
+  
+  .latex-document .document-title {
+    color: #f9fafb;
+  }
+  
+  .latex-document .document-author {
+    color: #d1d5db;
+  }
+  
+  .latex-document .document-date {
+    color: #9ca3af;
+  }
+  
+  .latex-document .section,
+  .latex-document .subsection,
+  .latex-document .subsubsection {
+    color: #f3f4f6;
+  }
+  
+  .math-error {
+    color: #fca5a5;
+    background-color: #7f1d1d;
+    border-color: #b91c1c;
+  }
 }

@@ -1,103 +1,254 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import LatexEditor from '../components/LatexEditor';
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [title, setTitle] = useState('My LaTeX Document');
+  const [content, setContent] = useState(`\\documentclass{article}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+\\title{Sample LaTeX Document}
+\\author{Your Name}
+\\date{\\today}
+
+\\begin{document}
+
+\\maketitle
+
+\\section{Introduction}
+This is a sample LaTeX document. You can write mathematical expressions like $E = mc^2$ inline, or display them in blocks:
+
+\\[
+\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}
+\\]
+
+\\section{More Examples}
+Here are some more mathematical expressions:
+
+\\begin{align}
+f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{x^2 + 1}
+\\end{align}
+
+\\section{Lists and Text}
+\\begin{itemize}
+\\item First item
+\\item Second item with $\\alpha + \\beta = \\gamma$
+\\item Third item
+\\end{itemize}
+
+\\end{document}`);
+  const [isTyping, setIsTyping] = useState(false);
+  const [isDark, setIsDark] = useState(false);
+  const [hasCompiled, setHasCompiled] = useState(false);
+  const [isCompiling, setIsCompiling] = useState(false);
+  const [compiledPdfUrl, setCompiledPdfUrl] = useState('');
+  const [compileLog, setCompileLog] = useState('');
+  const titleRef = useRef(null);
+
+  // Detect dark mode
+  useEffect(() => {
+    const checkDarkMode = () => {
+      setIsDark(window.matchMedia('(prefers-color-scheme: dark)').matches);
+    };
+    
+    checkDarkMode();
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    mediaQuery.addEventListener('change', checkDarkMode);
+    
+    return () => mediaQuery.removeEventListener('change', checkDarkMode);
+  }, []);
+
+  // Auto-focus title on load
+  useEffect(() => {
+    if (titleRef.current) {
+      titleRef.current.focus();
+    }
+  }, []);
+
+  // Handle typing indicators
+  const handleTitleChange = (e) => {
+    setTitle(e.target.value);
+    setIsTyping(true);
+    setTimeout(() => setIsTyping(false), 1000);
+  };
+
+  // Editor returns the new value as a string
+  const handleContentChange = (val) => {
+    setContent(val);
+    setIsTyping(true);
+    setTimeout(() => setIsTyping(false), 1000);
+  };
+
+  // Compile LaTeX to PDF via internal API route
+  const compileLatex = async () => {
+    setHasCompiled(true);
+    setIsCompiling(true);
+    setCompileLog('');
+    setCompiledPdfUrl('');
+
+    try {
+      const resp = await fetch('/api/latex', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+
+      if (!resp.ok) {
+        let msg = 'Compilation failed';
+        try {
+          const data = await resp.json();
+          msg = data?.error || msg;
+        } catch {}
+        setCompileLog(msg);
+        setCompiledPdfUrl('');
+      } else {
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        setCompiledPdfUrl(url);
+        setCompileLog('');
+      }
+    } catch (error) {
+      setCompileLog(`Compilation error: ${error.message}`);
+      setCompiledPdfUrl('');
+    } finally {
+      setIsCompiling(false);
+    }
+  };
+
+  // Handle tab and save shortcut
+  const handleKeyDown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      compileLatex();
+      return;
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = e.target;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newValue = content.substring(0, start) + '    ' + content.substring(end);
+      setContent(newValue);
+      setIsTyping(true);
+      setTimeout(() => setIsTyping(false), 1000);
+      requestAnimationFrame(() => {
+        try {
+          textarea.selectionStart = textarea.selectionEnd = start + 4;
+        } catch {}
+      });
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-white dark:bg-[#191919] transition-colors duration-200">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-white/80 dark:bg-[#191919]/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800">
+        <div className="w-full px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-blue-600 rounded-lg flex items-center justify-center">
+              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M4.5 3h15l-3.5 9h-8l-3.5-9zm8 12c0 1.1.9 2 2 2s2-.9 2-2-.9-2-2-2-2 .9-2 2z"/>
+              </svg>
+            </div>
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+              LaTeX Editor
+            </span>
+            <span className="text-xs text-gray-400">•</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {title || 'Untitled'}
+            </span>
+          </div>
+          
+          <div className="flex items-center space-x-3">
+            {isTyping && (
+              <div className="flex items-center space-x-1 text-xs text-gray-500">
+                <div className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></div>
+                <span>Editing...</span>
+              </div>
+            )}
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              {content.length} characters
+            </div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+
+      {/* Split Editor Layout */}
+      <div className="flex h-[calc(100vh-73px)]">
+        {/* Left Side - Editor */}
+        <div className="w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+          <div className="p-6 border-b border-gray-100 dark:border-gray-800">
+            <input
+              ref={titleRef}
+              type="text"
+              value={title}
+              onChange={handleTitleChange}
+              placeholder="Document Title"
+              className="w-full text-2xl font-bold text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-transparent border-none outline-none"
+            />
+          </div>
+          
+          <div className="flex-1 p-6">
+            <LatexEditor
+              value={content}
+              onChange={handleContentChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Write your LaTeX code here..."
+              className="w-full h-full"
+              isDark={isDark}
+            />
+          </div>
+        </div>
+
+        {/* Right Side - PDF Preview / Errors */}
+        <div className="w-1/2 flex flex-col">
+          <div className="p-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+              {!hasCompiled ? 'Preview' : (compileLog ? 'Errors' : 'PDF Preview')}
+            </h3>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Press ⌘S / Ctrl+S to compile</span>
+          </div>
+          
+          <div className="flex-1 bg-white dark:bg-[#1a1a1a]">
+            {!hasCompiled ? (
+              <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+                <div className="text-center">
+                  <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M4.5 3h15l-3.5 9h-8l-3.5-9zm8 12c0 1.1.9 2 2 2s2-.9 2-2-.9-2-2-2-2 .9-2 2z"/>
+                  </svg>
+                  <p className="text-lg mb-2">Ready to compile</p>
+                  <p className="text-sm">Press ⌘S or Ctrl+S to render your PDF</p>
+                </div>
+              </div>
+            ) : isCompiling ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="animate-spin h-8 w-8 rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              </div>
+            ) : compileLog ? (
+              <div className="p-6 overflow-auto h-full">
+                <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+                  <h4 className="font-semibold text-red-800 dark:text-red-200 mb-2">Compilation Errors:</h4>
+                </div>
+                <pre className="text-sm whitespace-pre-wrap text-red-700 dark:text-red-300">{compileLog}</pre>
+              </div>
+            ) : compiledPdfUrl ? (
+              <object data={compiledPdfUrl} type="application/pdf" className="w-full h-full">
+                <div className="p-6 text-sm text-gray-600 dark:text-gray-300">
+                  PDF preview is not supported in this browser. 
+                  <a className="underline" href={compiledPdfUrl} target="_blank" rel="noreferrer">Open the PDF</a> instead.
+                </div>
+              </object>
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+                <div>No output yet.</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
