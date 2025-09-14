@@ -11,7 +11,7 @@ class AIService {
     this.config = {
       model: 'gpt-4',
       temperature: 0.7,
-      maxTokens: 2048,
+      maxTokens: 10000,
       stream: true
     };
   }
