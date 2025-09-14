@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { askAI } from '../lib/simpleAgent.js';
+import { askAI, undoLastChange, canUndo } from '../lib/simpleAgent.js';
+import LatexDiffViewer from './LatexDiffViewer.js';
+import { parseStreamingDiff, hasStreamingLatexDiffs, createStreamingChanges } from '../lib/latexDiff.js';
 
 export default function AIChat({ isDark = false }) {
   const [messages, setMessages] = useState([]);
@@ -17,16 +19,23 @@ export default function AIChat({ isDark = false }) {
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [undoAvailable, setUndoAvailable] = useState(false);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Focus input on mount
+  // Focus input on mount and check undo availability
   useEffect(() => {
     textareaRef.current?.focus();
+    setUndoAvailable(canUndo());
   }, []);
+
+  // Check undo availability after messages change
+  useEffect(() => {
+    setUndoAvailable(canUndo());
+  }, [messages]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -71,10 +80,26 @@ export default function AIChat({ isDark = false }) {
       
       // Call AI function with streaming
       const result = await askAI(userMessage, (chunk, fullResponse) => {
+        // Parse streaming diff content
+        let streamingData = null;
+        if (hasStreamingLatexDiffs(fullResponse)) {
+          const parsed = parseStreamingDiff(fullResponse);
+          streamingData = {
+            diffBlocks: parsed.diffBlocks,
+            changes: createStreamingChanges(parsed.diffBlocks),
+            hasStreamingDiffs: parsed.hasStreamingDiffs
+          };
+        }
+        
         // Update the streaming message
         setMessages(prev => prev.map(msg => 
           msg.id === assistantMessageId 
-            ? { ...msg, content: fullResponse }
+            ? { 
+                ...msg, 
+                content: fullResponse,
+                rawContent: fullResponse,
+                ...streamingData
+              }
             : msg
         ));
       });
@@ -85,8 +110,14 @@ export default function AIChat({ isDark = false }) {
           ? { 
               ...msg, 
               content: result.response,
+              rawContent: result.response,
               isStreaming: false,
-              documentUpdated: result.documentUpdated 
+              documentUpdated: result.documentUpdated,
+              hasDiffs: result.hasDiffs,
+              diffBlocks: result.diffBlocks,
+              changes: result.changes,
+              autoApplied: result.autoApplied,
+              hasStreamingDiffs: false // Clear streaming state
             }
           : msg
       ));
@@ -134,7 +165,7 @@ export default function AIChat({ isDark = false }) {
   };
 
   // Render message content with Cursor-like code blocks
-  const renderMessageContent = (content, isStreaming = false, messageId) => {
+  const renderMessageContent = (content, isStreaming = false, messageId, message = null) => {
     if (!content) return null;
 
     // Find all code block patterns, including incomplete ones during streaming
@@ -142,8 +173,8 @@ export default function AIChat({ isDark = false }) {
     let lastIndex = 0;
     let blockIndex = 0;
 
-    // Look for complete code blocks
-    const completeBlockRegex = /```(\w*)\n([\s\S]*?)\n```/g;
+    // Look for complete code blocks (including latex-diff and latex-diff-formatted)
+    const completeBlockRegex = /```(\w*(?:-\w+)*)\n([\s\S]*?)\n```/g;
     let match;
 
     while ((match = completeBlockRegex.exec(content)) !== null) {
@@ -172,7 +203,7 @@ export default function AIChat({ isDark = false }) {
 
     // Check for incomplete code block at the end (during streaming)
     const remainingContent = content.slice(lastIndex);
-    const incompleteMatch = remainingContent.match(/```(\w*)\n?([\s\S]*)$/);
+    const incompleteMatch = remainingContent.match(/```(\w*(?:-\w+)*)\n?([\s\S]*)$/);
     
     if (incompleteMatch && isStreaming) {
       // Add text before the incomplete code block
@@ -185,11 +216,15 @@ export default function AIChat({ isDark = false }) {
         });
       }
 
+      // Handle streaming diff blocks
+      let language = incompleteMatch[1] || 'text';
+      let code = incompleteMatch[2];
+
       // Add the incomplete code block
       parts.push({
         type: 'codeblock',
-        language: incompleteMatch[1] || 'text',
-        code: incompleteMatch[2],
+        language: language,
+        code: code,
         complete: false,
         streaming: true,
         blockId: `${messageId}-${blockIndex}`,
@@ -206,6 +241,38 @@ export default function AIChat({ isDark = false }) {
 
     return parts.map((part) => {
       if (part.type === 'codeblock') {
+        // Special handling for latex-diff blocks (both streaming and completed)
+        if (part.language === 'latex-diff') {
+          // Check if this is streaming or completed
+          const isStreamingDiff = message && message.hasStreamingDiffs && message.isStreaming;
+          const hasCompletedDiffs = message && message.hasDiffs && !message.isStreaming;
+          
+          if (isStreamingDiff && message.changes) {
+            return (
+              <div key={part.index} className="my-4">
+                <LatexDiffViewer
+                  changes={message.changes}
+                  autoApplied={false}
+                  streaming={true}
+                  isDark={isDark}
+                />
+              </div>
+            );
+          } else if (hasCompletedDiffs) {
+            return (
+              <div key={part.index} className="my-4">
+                <LatexDiffViewer
+                  changes={message.changes}
+                  autoApplied={message.autoApplied}
+                  streaming={false}
+                  isDark={isDark}
+                />
+              </div>
+            );
+          }
+        }
+
+        // Regular code block rendering
         const isExpanded = expandedBlocks.has(part.blockId);
         const shouldCollapse = part.code.split('\n').length > 10;
         
@@ -303,6 +370,19 @@ export default function AIChat({ isDark = false }) {
     setMessages([]);
   };
 
+  // Handle global undo
+  const handleGlobalUndo = () => {
+    try {
+      const success = undoLastChange();
+      if (success) {
+        console.log('Successfully undid last change');
+        setUndoAvailable(canUndo());
+      }
+    } catch (error) {
+      console.error('Error undoing changes:', error);
+    }
+  };
+
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-[#1a1a1a] border-r border-gray-200 dark:border-gray-800">
@@ -333,6 +413,17 @@ export default function AIChat({ isDark = false }) {
               <option value="gpt-4-turbo">GPT-4 Turbo</option>
               <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
             </select>
+            
+            <button
+              onClick={handleGlobalUndo}
+              className="p-1.5 text-orange-500 hover:text-orange-600 dark:hover:text-orange-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Undo last change"
+              disabled={!undoAvailable}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+            </button>
             
             <button
               onClick={clearChat}
@@ -393,7 +484,7 @@ export default function AIChat({ isDark = false }) {
                       {message.isError ? (
                         <div className="whitespace-pre-wrap">{message.content}</div>
                       ) : (
-                        renderMessageContent(message.content, message.isStreaming, message.id)
+                        renderMessageContent(message.content, message.isStreaming, message.id, message)
                       )}
                     </div>
                   </div>
