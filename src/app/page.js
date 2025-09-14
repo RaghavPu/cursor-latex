@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import LatexEditor from '../components/LatexEditor';
 import AIChat from '../components/AIChat';
-import AIConfig from '../components/AIConfig';
 import ResizableDivider from '../components/ResizableDivider';
+import { initializeDocument } from '../lib/simpleAgent';
 
 export default function Home() {
   const [title, setTitle] = useState('My LaTeX Document');
@@ -49,9 +49,11 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
   const [isCompiling, setIsCompiling] = useState(false);
   const [compiledPdfUrl, setCompiledPdfUrl] = useState('');
   const [compileLog, setCompileLog] = useState('');
-  const [showAIConfig, setShowAIConfig] = useState(false);
   const [aiChatWidth, setAiChatWidth] = useState(320); // Default width for AI chat pane
   const titleRef = useRef(null);
+  const editorRef = useRef(null);
+  
+  // No complex hooks needed
 
   // Detect dark mode
   useEffect(() => {
@@ -73,6 +75,15 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
     }
   }, []);
 
+  // Initialize simple agent
+  useEffect(() => {
+    console.log('[Page] Initializing simple agent with content');
+    initializeDocument(content, (newContent) => {
+      console.log('[Page] AI updated document, syncing to React state');
+      setContent(newContent);
+    });
+  }, []); // Only run once on mount
+
   // Handle typing indicators
   const handleTitleChange = (e) => {
     setTitle(e.target.value);
@@ -85,6 +96,11 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
     setContent(val);
     setIsTyping(true);
     setTimeout(() => setIsTyping(false), 1000);
+    
+    // Update simple agent with new content
+    initializeDocument(val, (newContent) => {
+      setContent(newContent);
+    });
   };
 
   // Compile LaTeX to PDF via internal API route
@@ -192,8 +208,7 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
           className="flex-shrink-0"
         >
           <AIChat 
-            isDark={isDark} 
-            onShowConfig={() => setShowAIConfig(true)}
+            isDark={isDark}
           />
         </ResizableDivider>
 
@@ -212,6 +227,7 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
           
           <div className="flex-1 p-6 overflow-auto">
             <LatexEditor
+              ref={editorRef}
               value={content}
               onChange={handleContentChange}
               onKeyDown={handleKeyDown}
@@ -269,12 +285,6 @@ f(x) &= ax^2 + bx + c \\\\\ng(x) &= \\sin(x) + \\cos(x) \\\\\nh(x) &= \\frac{1}{
         </div>
       </div>
 
-      {/* AI Configuration Modal */}
-      <AIConfig 
-        isOpen={showAIConfig}
-        onClose={() => setShowAIConfig(false)}
-        onSave={() => setShowAIConfig(false)}
-      />
     </div>
   );
 }

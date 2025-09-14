@@ -1,27 +1,22 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useAI } from '../hooks/useAI.js';
+import { askAI } from '../lib/simpleAgent.js';
 
-export default function AIChat({ isDark = false, onShowConfig }) {
+export default function AIChat({ isDark = false }) {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [currentModel, setCurrentModel] = useState('gpt-4');
   
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const textareaRef = useRef(null);
   const streamingMessageRef = useRef('');
   
-  const { 
-    isReady, 
-    isLoading, 
-    error, 
-    askQuestionStream, 
-    cancelRequest,
-    getRateLimitStats 
-  } = useAI();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -43,13 +38,7 @@ export default function AIChat({ isDark = false, onShowConfig }) {
   }, [inputValue]);
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading || isStreaming) return;
-    if (!isReady) {
-      if (onShowConfig) {
-        onShowConfig();
-      }
-      return;
-    }
+    if (!inputValue.trim() || isLoading) return;
 
     const userMessage = inputValue.trim();
     setInputValue('');
@@ -63,57 +52,61 @@ export default function AIChat({ isDark = false, onShowConfig }) {
     };
     
     setMessages(prev => [...prev, newUserMessage]);
-    setIsStreaming(true);
-    streamingMessageRef.current = '';
-
-    // Add empty assistant message that will be filled by streaming
-    const assistantMessage = {
-      id: Date.now() + 1,
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-      isStreaming: true
-    };
-    
-    setMessages(prev => [...prev, assistantMessage]);
 
     try {
-      const stream = askQuestionStream(userMessage);
+      setIsLoading(true);
+      setError(null);
       
-      for await (const chunk of stream) {
-        streamingMessageRef.current += chunk;
-        
+      // Create streaming assistant message
+      const assistantMessageId = Date.now() + 1;
+      const assistantMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        isStreaming: true
+      };
+      
+      setMessages(prev => [...prev, assistantMessage]);
+      
+      // Call AI function with streaming
+      const result = await askAI(userMessage, (chunk, fullResponse) => {
+        // Update the streaming message
         setMessages(prev => prev.map(msg => 
-          msg.id === assistantMessage.id 
-            ? { ...msg, content: streamingMessageRef.current }
+          msg.id === assistantMessageId 
+            ? { ...msg, content: fullResponse }
             : msg
         ));
-      }
+      });
       
       // Mark streaming as complete
       setMessages(prev => prev.map(msg => 
-        msg.id === assistantMessage.id 
-          ? { ...msg, isStreaming: false }
+        msg.id === assistantMessageId 
+          ? { 
+              ...msg, 
+              content: result.response,
+              isStreaming: false,
+              documentUpdated: result.documentUpdated 
+            }
           : msg
       ));
       
     } catch (error) {
       console.error('Chat error:', error);
+      setError(error.message);
       
-      // Update the assistant message with error
-      setMessages(prev => prev.map(msg => 
-        msg.id === assistantMessage.id 
-          ? { 
-              ...msg, 
-              content: `Sorry, I encountered an error: ${error.message}`,
-              isError: true,
-              isStreaming: false 
-            }
-          : msg
-      ));
+      // Add error message
+      const errorMessage = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: `Sorry, I encountered an error: ${error.message}`,
+        timestamp: new Date(),
+        isError: true
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setIsStreaming(false);
-      streamingMessageRef.current = '';
+      setIsLoading(false);
     }
   };
 
@@ -124,12 +117,186 @@ export default function AIChat({ isDark = false, onShowConfig }) {
     }
   };
 
-  const handleCancelStream = () => {
-    cancelRequest();
-    setIsStreaming(false);
+  // State for expanded code blocks
+  const [expandedBlocks, setExpandedBlocks] = useState(new Set());
+
+  // Toggle code block expansion
+  const toggleBlockExpansion = (blockId) => {
+    setExpandedBlocks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(blockId)) {
+        newSet.delete(blockId);
+      } else {
+        newSet.add(blockId);
+      }
+      return newSet;
+    });
+  };
+
+  // Render message content with Cursor-like code blocks
+  const renderMessageContent = (content, isStreaming = false, messageId) => {
+    if (!content) return null;
+
+    // Find all code block patterns, including incomplete ones during streaming
+    const parts = [];
+    let lastIndex = 0;
+    let blockIndex = 0;
+
+    // Look for complete code blocks
+    const completeBlockRegex = /```(\w*)\n([\s\S]*?)\n```/g;
+    let match;
+
+    while ((match = completeBlockRegex.exec(content)) !== null) {
+      // Add text before the code block
+      if (match.index > lastIndex) {
+        parts.push({
+          type: 'text',
+          content: content.slice(lastIndex, match.index),
+          index: parts.length
+        });
+      }
+
+      // Add the complete code block
+      parts.push({
+        type: 'codeblock',
+        language: match[1] || 'text',
+        code: match[2],
+        complete: true,
+        blockId: `${messageId}-${blockIndex}`,
+        index: parts.length
+      });
+
+      lastIndex = match.index + match[0].length;
+      blockIndex++;
+    }
+
+    // Check for incomplete code block at the end (during streaming)
+    const remainingContent = content.slice(lastIndex);
+    const incompleteMatch = remainingContent.match(/```(\w*)\n?([\s\S]*)$/);
     
-    // Remove the streaming message
-    setMessages(prev => prev.filter(msg => !msg.isStreaming));
+    if (incompleteMatch && isStreaming) {
+      // Add text before the incomplete code block
+      const textBeforeBlock = remainingContent.slice(0, incompleteMatch.index);
+      if (textBeforeBlock) {
+        parts.push({
+          type: 'text',
+          content: textBeforeBlock,
+          index: parts.length
+        });
+      }
+
+      // Add the incomplete code block
+      parts.push({
+        type: 'codeblock',
+        language: incompleteMatch[1] || 'text',
+        code: incompleteMatch[2],
+        complete: false,
+        streaming: true,
+        blockId: `${messageId}-${blockIndex}`,
+        index: parts.length
+      });
+    } else if (remainingContent) {
+      // Add remaining text
+      parts.push({
+        type: 'text',
+        content: remainingContent,
+        index: parts.length
+      });
+    }
+
+    return parts.map((part) => {
+      if (part.type === 'codeblock') {
+        const isExpanded = expandedBlocks.has(part.blockId);
+        const shouldCollapse = part.code.split('\n').length > 10;
+        
+        return (
+          <div key={part.index} className="my-4">
+            {/* Cursor-style code block header */}
+            <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-t-lg border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center space-x-2">
+                <div className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">
+                  {part.language}
+                </div>
+                {part.language === 'latex' && (
+                  <div className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                    Document Update
+                  </div>
+                )}
+                {part.streaming && (
+                  <div className="flex space-x-0.5">
+                    <div className="w-1 h-1 bg-blue-500 rounded-full animate-pulse"></div>
+                    <div className="w-1 h-1 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-1 h-1 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center space-x-2">
+                {shouldCollapse && (
+                  <button
+                    onClick={() => toggleBlockExpansion(part.blockId)}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium"
+                  >
+                    {isExpanded ? 'Collapse' : 'Expand'}
+                  </button>
+                )}
+                <button
+                  onClick={() => navigator.clipboard.writeText(part.code)}
+                  className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium"
+                  disabled={!part.code.trim()}
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+            
+            {/* Code content */}
+            <div className="bg-gray-50 dark:bg-gray-900 border-x border-b border-gray-200 dark:border-gray-700 rounded-b-lg">
+              <div 
+                className={`relative overflow-hidden transition-all duration-300 ${
+                  shouldCollapse && !isExpanded ? 'max-h-32' : 'max-h-none'
+                }`}
+              >
+                <pre className="p-4 text-sm overflow-x-auto">
+                  <code className="text-gray-800 dark:text-gray-200 font-mono">
+                    {part.code}
+                    {part.streaming && (
+                      <span className="inline-block w-2 h-4 bg-blue-500 ml-1 animate-pulse"></span>
+                    )}
+                  </code>
+                </pre>
+                
+                {/* Fade overlay when collapsed */}
+                {shouldCollapse && !isExpanded && (
+                  <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-gray-50 dark:from-gray-900 to-transparent pointer-events-none"></div>
+                )}
+              </div>
+              
+              {/* Click to expand hint */}
+              {shouldCollapse && !isExpanded && (
+                <div className="px-4 pb-2">
+                  <button
+                    onClick={() => toggleBlockExpansion(part.blockId)}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium"
+                  >
+                    Click to expand ({part.code.split('\n').length} lines)
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      } else {
+        // Regular text content
+        return (
+          <div key={part.index} className="whitespace-pre-wrap">
+            {part.content}
+            {isStreaming && part.index === parts.length - 1 && (
+              <span className="inline-block w-2 h-4 bg-blue-500 ml-1 animate-pulse"></span>
+            )}
+          </div>
+        );
+      }
+    });
   };
 
   const clearChat = () => {
@@ -149,28 +316,23 @@ export default function AIChat({ isDark = false, onShowConfig }) {
               </svg>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                AI Assistant
-              </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {isReady ? 'Ready to help with LaTeX' : 'Setup required'}
-              </p>
+              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">AI Assistant</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Ask questions or request changes</p>
             </div>
           </div>
           
-          <div className="flex items-center space-x-1">
-            {!isReady && (
-              <button
-                onClick={() => onShowConfig && onShowConfig()}
-                className="p-1.5 text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
-                title="Configure AI"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </button>
-            )}
+          <div className="flex items-center space-x-2">
+            {/* Model Selection */}
+            <select
+              value={currentModel}
+              onChange={(e) => setCurrentModel(e.target.value)}
+              className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-400"
+              title="Select AI Model"
+            >
+              <option value="gpt-4">GPT-4</option>
+              <option value="gpt-4-turbo">GPT-4 Turbo</option>
+              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+            </select>
             
             <button
               onClick={clearChat}
@@ -201,14 +363,7 @@ export default function AIChat({ isDark = false, onShowConfig }) {
             <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed max-w-48">
               Ask questions about LaTeX syntax, get help with equations, or request code explanations
             </p>
-            {!isReady && (
-              <button
-                onClick={() => onShowConfig && onShowConfig()}
-                className="mt-4 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors border border-gray-200 dark:border-gray-700"
-              >
-                Configure AI to get started
-              </button>
-            )}
+            {/* No readiness warning; server route handles key presence */}
           </div>
         ) : (
           <div className="px-4 py-3 space-y-4">
@@ -230,12 +385,16 @@ export default function AIChat({ isDark = false, onShowConfig }) {
                         <span>generating...</span>
                       </div>
                     )}
-                    <div className={`text-sm leading-relaxed whitespace-pre-wrap ${
+                    <div className={`text-sm leading-relaxed ${
                       message.isError
                         ? 'text-red-600 dark:text-red-400'
                         : 'text-gray-800 dark:text-gray-200'
                     }`}>
-                      {message.content}
+                      {message.isError ? (
+                        <div className="whitespace-pre-wrap">{message.content}</div>
+                      ) : (
+                        renderMessageContent(message.content, message.isStreaming, message.id)
+                      )}
                     </div>
                   </div>
                 )}
@@ -255,22 +414,14 @@ export default function AIChat({ isDark = false, onShowConfig }) {
 
       {/* Input Area */}
       <div className="flex-shrink-0 p-4 border-t border-gray-100 dark:border-gray-800">
-        {isStreaming && (
-          <div className="mb-3 flex items-center justify-between text-sm">
-            <div className="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
-              <div className="flex space-x-1">
-                <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
-                <div className="w-1 h-1 bg-current rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                <div className="w-1 h-1 bg-current rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-              </div>
-              <span>AI is responding...</span>
+        {isLoading && (
+          <div className="mb-3 flex items-center text-sm text-gray-600 dark:text-gray-400">
+            <div className="flex space-x-1 mr-2">
+              <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
+              <div className="w-1 h-1 bg-current rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+              <div className="w-1 h-1 bg-current rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
             </div>
-            <button
-              onClick={handleCancelStream}
-              className="text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium"
-            >
-              Cancel
-            </button>
+            <span>AI is thinking...</span>
           </div>
         )}
         
@@ -278,7 +429,7 @@ export default function AIChat({ isDark = false, onShowConfig }) {
           isInputFocused 
             ? 'border-gray-400 dark:border-gray-500 shadow-sm' 
             : 'border-gray-200 dark:border-gray-700'
-        } ${!isReady ? 'opacity-50' : ''}`}>
+        }`}>
           <textarea
             ref={textareaRef}
             value={inputValue}
@@ -286,8 +437,8 @@ export default function AIChat({ isDark = false, onShowConfig }) {
             onKeyDown={handleKeyDown}
             onFocus={() => setIsInputFocused(true)}
             onBlur={() => setIsInputFocused(false)}
-            placeholder={isReady ? "Ask me anything about LaTeX..." : "Configure AI to start chatting"}
-            disabled={!isReady || isLoading || isStreaming}
+            placeholder={"Ask me anything about LaTeX..."}
+            disabled={isLoading}
             className="w-full px-4 py-3 pr-12 bg-transparent border-none outline-none resize-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 disabled:cursor-not-allowed"
             rows="1"
             style={{ 
@@ -301,7 +452,7 @@ export default function AIChat({ isDark = false, onShowConfig }) {
             {inputValue.trim() && (
               <button
                 onClick={handleSendMessage}
-                disabled={!isReady || isLoading || isStreaming}
+                disabled={isLoading}
                 className="p-2 bg-gray-700 hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md transition-colors shadow-sm"
                 title="Send message"
               >
@@ -315,12 +466,10 @@ export default function AIChat({ isDark = false, onShowConfig }) {
         
         <div className="mt-2 flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
           <span>Press Enter to send, Shift+Enter for new line</span>
-          {isReady && (
-            <span className="flex items-center space-x-1">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-              <span>AI Ready</span>
-            </span>
-          )}
+          <span className="flex items-center space-x-1">
+            <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+            <span>Server Connected</span>
+          </span>
         </div>
       </div>
     </div>

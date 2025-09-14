@@ -5,14 +5,25 @@ import Prism from 'prismjs';
 import 'prismjs/components/prism-latex';
 import 'prismjs/themes/prism.css';
 
-export default function LatexEditor({ 
+import { forwardRef, useImperativeHandle, useRef, useEffect } from 'react';
+
+const LatexEditor = forwardRef(function LatexEditor({ 
   value, 
   onChange, 
   onKeyDown, 
   placeholder = "Write your LaTeX code here...",
   className = "",
   isDark = false 
-}) {
+}, ref) {
+  const internalRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    getCursorPosition: () => {
+      const ta = internalRef.current?._input || internalRef.current?.textarea || null;
+      if (!ta) return 0;
+      try { return ta.selectionStart || 0; } catch { return 0; }
+    }
+  }), []);
   return (
     <div className={`${className}`} style={{ position: 'relative' }}>
       {!value && (
@@ -35,6 +46,7 @@ export default function LatexEditor({
       )}
 
       <Editor
+        ref={internalRef}
         value={value}
         onValueChange={onChange}
         highlight={(code) => Prism.highlight(code, Prism.languages.latex, 'latex')}
@@ -52,4 +64,6 @@ export default function LatexEditor({
       />
     </div>
   );
-}
+});
+
+export default LatexEditor;

@@ -22,8 +22,8 @@ class AIService {
   async initialize(config = {}) {
     this.config = { ...this.config, ...config };
     
-    // Load API key from localStorage or environment
-    this.apiKey = this.loadApiKey();
+    // Check API key availability via API route
+    await this.checkApiKeyAvailability();
     
     // Register available providers
     this.registerProviders();
@@ -32,6 +32,30 @@ class AIService {
     this.setProvider(config.provider || 'openai');
     
     return this.isReady();
+  }
+
+  /**
+   * Check if API key is available on the server
+   */
+  async checkApiKeyAvailability() {
+    try {
+      const response = await fetch('/api/ai-config');
+      const data = await response.json();
+      
+      if (data.hasApiKey) {
+        this.apiKey = 'server-side-key'; // Placeholder to indicate key is available
+        this.apiKeyAvailable = true;
+        console.log(`AI Service initialized with ${data.keySource}: ${data.maskedKey}`);
+      } else {
+        this.apiKey = null;
+        this.apiKeyAvailable = false;
+        console.warn('No API key found in environment variables (OPENAI_KEY)');
+      }
+    } catch (error) {
+      console.error('Failed to check API key availability:', error);
+      this.apiKey = null;
+      this.apiKeyAvailable = false;
+    }
   }
 
   /**
@@ -88,14 +112,6 @@ class AIService {
     return this;
   }
 
-  /**
-   * Set API key for the service
-   */
-  setApiKey(apiKey) {
-    this.apiKey = apiKey;
-    this.saveApiKey(apiKey);
-    return this;
-  }
 
   /**
    * Update configuration
@@ -106,10 +122,18 @@ class AIService {
   }
 
   /**
+   * Update model
+   */
+  updateModel(model) {
+    this.config.model = model;
+    return this;
+  }
+
+  /**
    * Check if the service is ready to make requests
    */
   isReady() {
-    return !!(this.apiKey && this.currentProvider && this.providers.has(this.currentProvider));
+    return !!(this.apiKeyAvailable && this.currentProvider && this.providers.has(this.currentProvider));
   }
 
   /**
@@ -120,29 +144,32 @@ class AIService {
       throw new Error('AI service not properly initialized');
     }
 
-    const provider = this.providers.get(this.currentProvider);
     const config = { ...this.config, ...options };
     
-    const requestBody = provider.formatRequest(messages, config);
-    
     try {
-      const response = await fetch(provider.endpoint, {
+      // Use our API route instead of direct OpenAI call
+      const response = await fetch('/api/ai-chat', {
         method: 'POST',
-        headers: provider.headers(this.apiKey),
-        body: JSON.stringify(requestBody)
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messages: messages,
+          model: config.model,
+          temperature: config.temperature,
+          maxTokens: config.maxTokens,
+          stream: config.stream
+        })
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(`AI API Error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+        throw new Error(`AI API Error: ${response.status} - ${errorData.error || 'Unknown error'}`);
       }
 
-      if (config.stream) {
-        return this.handleStreamResponse(response);
-      } else {
-        const data = await response.json();
-        return this.extractContent(data);
-      }
+      // For now, we don't expose streaming to the client; always return full content
+      const data = await response.json();
+      return this.extractContent(data);
     } catch (error) {
       console.error('AI Service Error:', error);
       throw error;
@@ -210,24 +237,6 @@ class AIService {
     return '';
   }
 
-  /**
-   * Load API key from storage
-   */
-  loadApiKey() {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('ai_api_key');
-    }
-    return process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
-  }
-
-  /**
-   * Save API key to storage
-   */
-  saveApiKey(apiKey) {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('ai_api_key', apiKey);
-    }
-  }
 
   /**
    * Get available providers
